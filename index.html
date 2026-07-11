@@ -204,6 +204,14 @@ button{font-family:inherit;cursor:pointer;border:none;font-weight:700}
 .kai-img.float{animation:float 3s ease-in-out infinite}
 .home-hero2 .kai-img{height:200px;margin-bottom:2px}
 .results .kai-img{height:150px}
+/* For-parents box + WhatsApp share */
+.parents-box{position:relative;z-index:1;margin:16px auto 0;max-width:340px;width:100%;background:rgba(255,255,255,.72);border:1.5px dashed var(--purple);border-radius:16px;padding:13px 15px;text-align:center;backdrop-filter:blur(3px)}
+.pb-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2);background:var(--lav);padding:3px 11px;border-radius:20px;margin-bottom:9px}
+.pb-text{font-size:13px;color:var(--ink);font-weight:600;margin-bottom:11px;line-height:1.4}
+.wa-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:#25D366;color:#fff;font-weight:800;font-size:15px;padding:13px;border-radius:14px;width:100%;box-shadow:0 4px 0 #1a9e4b;border:none;font-family:inherit;cursor:pointer}
+.wa-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #1a9e4b}
+.pb-note{font-size:11px;color:var(--ink2);margin-top:10px;line-height:1.45}
+.pb-note b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -550,25 +558,56 @@ function graphemes(str){
   return [...str].filter(g=>g.trim()!=="");
 }
 
-/* ---------- AUDIO (Web Speech API) ---------- */
-let hindiVoice = null;
-function loadVoices(){
+/* ---------- CONFIG ---------- */
+const APP_URL = "https://therajatsachdeva.github.io/hindimagic/"; // >>> update if your live URL differs
+function shareWhatsApp(){
+  const msg = "🌟 Check out *Hindi Magic* — a free, fun app that helps kids learn Hindi with games, stickers and sounds!\n\n" + APP_URL;
+  try{ window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank"); }catch(e){}
+}
+
+/* ---------- AUDIO (Web Speech API) — hardened for Android ---------- */
+let hindiVoice = null, voicesReady = false;
+function pickVoice(){
   try{
-    const vs = speechSynthesis.getVoices();
-    hindiVoice = vs.find(v=>v.lang==="hi-IN") || vs.find(v=>(v.lang||"").startsWith("hi")) || null;
+    const vs = speechSynthesis.getVoices() || [];
+    if(vs.length) voicesReady = true;
+    const norm = v => ((v.lang||"").replace("_","-").toLowerCase());
+    hindiVoice = vs.find(v=>norm(v)==="hi-in")
+              || vs.find(v=>norm(v).startsWith("hi"))
+              || vs.find(v=>/hindi/i.test(v.name||""))
+              || null;
   }catch(e){}
 }
-if(typeof speechSynthesis!=="undefined"){
-  loadVoices();
-  speechSynthesis.onvoiceschanged = loadVoices;
+if("speechSynthesis" in window){
+  pickVoice();
+  try{ speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
+}
+/* Android needs speech unlocked inside the first real user gesture */
+let ttsWarmed = false;
+function warmUpTTS(){
+  if(ttsWarmed || !("speechSynthesis" in window)) return;
+  ttsWarmed = true;
+  try{
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0; u.lang = "hi-IN";
+    speechSynthesis.speak(u);
+    pickVoice();
+  }catch(e){}
+}
+if("speechSynthesis" in window){
+  const unlock = ()=>{ warmUpTTS(); };
+  window.addEventListener("pointerdown", unlock, {once:true});
+  window.addEventListener("touchstart", unlock, {once:true});
 }
 function speak(text){
+  if(!("speechSynthesis" in window)) return;
   try{
-    if(typeof speechSynthesis==="undefined") return;
-    speechSynthesis.cancel();
+    if(!hindiVoice || !voicesReady) pickVoice();   // voices often arrive only after first interaction
+    if(speechSynthesis.speaking || speechSynthesis.pending){ speechSynthesis.cancel(); }
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "hi-IN"; u.rate = 0.85;
+    u.lang = "hi-IN"; u.rate = 0.8; u.pitch = 1; u.volume = 1;
     if(hindiVoice) u.voice = hindiVoice;
+    try{ speechSynthesis.resume(); }catch(e){}     // unstick a parked queue (Android/Chrome)
     speechSynthesis.speak(u);
   }catch(e){}
 }
@@ -680,6 +719,12 @@ function renderHome(){
       <button class="btn primary" onclick="${setup?"go('setup')":"go('map')"}">${setup?"Let's Start! 🚀":"Play 🎮"}</button>
       ${S.profile?`<button class="btn ghost" onclick="go('sbook')">My Sticker Book ⭐</button>`:""}
       ${S.profile?`<button class="btn ghost" onclick="switchPlayer()">Switch Player 🔄</button>`:""}
+      <div class="parents-box">
+        <div class="pb-tag">🔒 For Parents</div>
+        <div class="pb-text">Enjoying Hindi Magic? Share it with other parents in the class.</div>
+        <button class="wa-btn" onclick="shareWhatsApp()">💬 Share on WhatsApp</button>
+        <div class="pb-note">🔈 No sound on Android? Add a Hindi voice in <b>Settings › Accessibility › Text-to-speech › Google › Install voice data › Hindi</b>, then reopen the app.</div>
+      </div>
     </div>
     <div class="tiny home-foot">Tap 🔊 anywhere to hear each word · Made with 💜</div>
   </div>`;
@@ -986,7 +1031,7 @@ function afterReward(){
 // expose handlers for inline onclick
 Object.assign(window,{go,startRound,answer,tapTile,backTile,clearTiles,checkBuild,
   nextStep,speak,finishSetup,switchPlayer,collectSticker,afterReward,
-  hintAction,openReward,claimBonus,selectPack,render,S});
+  hintAction,openReward,claimBonus,selectPack,render,S,shareWhatsApp});
 load();
 render();
 </script>
